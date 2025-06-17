@@ -22,6 +22,7 @@ import (
 	"net"
 	"strconv"
 	"time"
+	"strings"
 )
 
 type Certificate struct {
@@ -31,8 +32,10 @@ type Certificate struct {
 	Version                int                  `json:"version"`
 	SignatureAlgorithm     string               `json:"signatureAlgorithm"`
 	Issuer                 Subject              `json:"issuer"`
+	IssuerDN               string               `json:"issuerDN"`
 	Validity               Validity             `json:"validity"`
 	Subject                Subject              `json:"subject"`
+	SubjectDN              string               `json:"subjectDN"`
 	Key                    SubjectPublicKeyInfo `json:"key"`
 	X509v3Extensions       Extensions           `json:"x509v3Extensions"`
 	X509v3BasicConstraints string               `json:"x509v3BasicConstraints"`
@@ -480,6 +483,53 @@ func GetSubjectAttributes(attributes []pkix.AttributeTypeAndValue) Subject {
 	return subjectAttributes
 }
 
+// FormatDNUnescaped returns a human-readable DN string in the order of RDNs, without escaping, reversed for readability
+func FormatDNUnescaped(rdnSeq []pkix.AttributeTypeAndValue) string {
+	var parts []string
+	for i := len(rdnSeq) - 1; i >= 0; i-- {
+		atv := rdnSeq[i]
+		oid := atv.Type.String()
+		var label string
+		switch oid {
+		case "2.5.4.6":
+			label = "C"
+		case "2.5.4.10":
+			label = "O"
+		case "2.5.4.11":
+			label = "OU"
+		case "2.5.4.3":
+			label = "CN"
+		case "2.5.4.7":
+			label = "L"
+		case "2.5.4.8":
+			label = "ST"
+		case "2.5.4.9":
+			label = "Street"
+		case "2.5.4.5":
+			label = "SerialNumber"
+		case "0.9.2342.19200300.100.1.25":
+			label = "DC"
+		case "1.2.840.113549.1.9.1":
+			label = "emailAddress"
+		case "2.5.4.46":
+			label = "DNQualifier"
+		case "2.5.4.97":
+			label = "OrganizationIdentifier"
+		case "1.3.6.1.4.1.311.60.2.1.1":
+			label = "jurisdictionL"
+		case "1.3.6.1.4.1.311.60.2.1.2":
+			label = "jurisdictionST"
+		case "1.3.6.1.4.1.311.60.2.1.3":
+			label = "jurisdictionC"
+		default:
+			label = oid
+		}
+		parts = append(parts, fmt.Sprintf("%s=%v", label, atv.Value))
+	}
+	return strings.Join(parts, ", ")
+}
+
+
 // CertToJSON returns a Certificate struct created from a X509.Certificate
 func CertToJSON(cert *x509.Certificate) Certificate {
 	var (
@@ -537,6 +587,9 @@ func CertToJSON(cert *x509.Certificate) Certificate {
 	certJson.Subject.PostalCode = cert.Subject.PostalCode
 	certJson.Subject.SerialNumber = cert.Subject.SerialNumber
 	certJson.Subject.CommonName = cert.Subject.CommonName
+
+	certJson.IssuerDN = FormatDNUnescaped(cert.Issuer.Names)
+	certJson.SubjectDN = FormatDNUnescaped(cert.Subject.Names)
 
 	certJson.Validity.NotBefore = cert.NotBefore.UTC()
 	certJson.Validity.NotAfter = cert.NotAfter.UTC()
